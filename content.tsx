@@ -233,6 +233,7 @@ export default function Content() {
     }
 
     const onMouseUp = (e: MouseEvent) => {
+      if (card.visible) return
       if (isInCsui(e)) return
       const selection = window.getSelection()
       if (!selection) return

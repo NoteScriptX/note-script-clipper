@@ -47,7 +47,7 @@ export function AnnotationCard({
 
   return (
     <div
-      className="pointer-events-auto relative w-[300px] rounded-lg border border-slate-200 bg-white shadow-lg"
+      className="pointer-events-auto relative w-[320px] rounded-xl border border-slate-200/90 bg-white/95 shadow-[0_14px_40px_rgba(15,23,42,0.16)] ring-1 ring-indigo-100/60 backdrop-blur-sm"
       style={{
         position: "fixed",
         left,
@@ -55,15 +55,15 @@ export function AnnotationCard({
         zIndex: 2147483647
       }}>
       <div
-        className={`absolute top-6 h-3 w-3 rotate-45 border border-slate-200 bg-white ${
+        className={`absolute top-7 h-3 w-3 rotate-45 border border-slate-200/90 bg-white ${
           arrowSide === "left"
             ? "left-0 -translate-x-1/2"
             : "right-0 translate-x-1/2"
         }`}
       />
 
-      <div className="max-h-[400px] overflow-auto p-3">
-        <div className="rounded bg-slate-50 p-2">
+      <div className="max-h-[430px] overflow-auto p-4">
+        <div className="rounded-lg border border-slate-100 bg-gradient-to-b from-slate-50 to-white p-2.5">
           <div className="flex items-start gap-2">
             <div className="mt-0.5 text-slate-400">“</div>
             <div className="min-w-0">
@@ -75,7 +75,7 @@ export function AnnotationCard({
               </div>
             </div>
             <button
-              className="ml-auto shrink-0 rounded px-2 py-1 text-xs text-slate-500 hover:bg-white hover:text-slate-700"
+              className="ml-auto shrink-0 rounded-md border border-transparent px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:border-slate-200 hover:bg-white hover:text-slate-700"
               onClick={onClose}
               type="button">
               关闭
@@ -83,10 +83,10 @@ export function AnnotationCard({
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-3.5">
           <textarea
             autoFocus
-            className="min-h-24 w-full resize-none rounded border border-slate-200 px-2 py-2 text-sm outline-none focus:border-indigo-400"
+            className="min-h-28 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
             onChange={(e) => setNote(e.target.value)}
             onKeyDown={(e) => {
               if (!e.ctrlKey) return
@@ -103,14 +103,17 @@ export function AnnotationCard({
                   setTimeout(() => setIsSaving(false), 260)
                 })
             }}
-            placeholder="写下你的批注…"
+            placeholder="输入批注（纯文本）"
             value={note}
           />
+          <div className="mt-1.5 text-[11px] text-slate-400">
+            提示：按 Ctrl + Enter 可快速保存
+          </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-3.5 grid grid-cols-2 gap-2.5">
           <button
-            className="rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
             disabled={isSaving || isCreating}
             onClick={async () => {
               setIsSaving(true)
@@ -126,7 +129,7 @@ export function AnnotationCard({
             {savedFlash ? "已保存 ✓" : isSaving ? "保存中…" : "保存批注"}
           </button>
           <button
-            className="rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-60"
+            className="rounded-lg bg-indigo-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-60"
             disabled={isSaving || isCreating}
             onClick={async () => {
               setIsCreating(true)
