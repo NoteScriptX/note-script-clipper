@@ -1,29 +1,18 @@
-import cssText from "data-text:~style.css"
-import type {
-  PlasmoCSConfig,
-  PlasmoGetShadowHostId,
-  PlasmoGetStyle
-} from "plasmo"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import cssText from "data-text:~style.css";
+import type { PlasmoCSConfig, PlasmoGetShadowHostId, PlasmoGetStyle } from "plasmo";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AnnotationCard } from "~components/AnnotationCard"
-import { Bubble } from "~components/Bubble"
-import {
-  createFingerprintFromSelection,
-  getMergedClientRects,
-  locateRangeFromFingerprint
-} from "~utils/anchor"
-import {
-  CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION,
-  sendToBackground,
-  STORAGE_UPDATED
-} from "~utils/messaging"
-import {
-  getAnnotationsByUrl,
-  NSX_ANNOTATIONS_KEY,
-  upsertAnnotation,
-  type NsXAnnotation
-} from "~utils/storage"
+
+
+import { AnnotationCard } from "~components/AnnotationCard";
+import { Bubble } from "~components/Bubble";
+import { createFingerprintFromSelection, getMergedClientRects, locateRangeFromFingerprint } from "~utils/anchor";
+import { CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION, sendToBackground, STORAGE_UPDATED } from "~utils/messaging";
+import { getAnnotationsByUrl, NSX_ANNOTATIONS_KEY, upsertAnnotation, type NsXAnnotation } from "~utils/storage";
+
+
+
+
 
 export const config: PlasmoCSConfig = {
   matches: ["http://*/*", "https://*/*"],
@@ -232,7 +221,19 @@ export default function Content() {
   }, [refreshHighlights, url])
 
   useEffect(() => {
-    const onMouseUp = () => {
+    const isInCsui = (e: MouseEvent) => {
+      const path = e.composedPath?.() ?? []
+      return path.some((p) => {
+        if (p instanceof HTMLElement) return p.id === "nsx-clipper-csui"
+        if (p instanceof ShadowRoot) {
+          return (p.host as HTMLElement | null)?.id === "nsx-clipper-csui"
+        }
+        return false
+      })
+    }
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (isInCsui(e)) return
       const selection = window.getSelection()
       if (!selection) return
       setCard({ visible: false })
@@ -266,12 +267,7 @@ export default function Content() {
     }
 
     const onMouseDown = (e: MouseEvent) => {
-      const path = e.composedPath()
-      if (
-        path.some(
-          (p) => p instanceof HTMLElement && p.id === "nsx-clipper-csui"
-        )
-      ) {
+      if (isInCsui(e)) {
         return
       }
       if (ephemeralTimerRef.current != null) {
