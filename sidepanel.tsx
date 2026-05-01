@@ -1,44 +1,44 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import "~style.css"
 
-import {
-  AnnotationList,
-  type AnnotationPreview
-} from "~components/AnnotationList"
-import { TaskForm } from "~components/TaskForm"
-import { createTaskFromAnnotation, getQtables, type QTable } from "~utils/api"
-import {
-  CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION,
-  STORAGE_UPDATED,
-  type BackgroundBroadcastMessage,
-  type OpenSidePanelPayload
-} from "~utils/messaging"
-import { getSettings, patchSettings, type NsXSettings } from "~utils/settings"
-import {
-  getAnnotationById,
-  getAnnotationsByUrl,
-  NSX_ANNOTATIONS_KEY,
-  updateAnnotationById
-} from "~utils/storage"
+
+
+
+
+import "~style.css";
+
+
+
+import { AnnotationList, type AnnotationPreview } from "~components/AnnotationList";
+import { TaskForm } from "~components/TaskForm";
+import { createTaskFromAnnotation, getQtables, type QTable } from "~utils/api";
+import { CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION, STORAGE_UPDATED, type BackgroundBroadcastMessage, type OpenSidePanelPayload } from "~utils/messaging";
+import { getSettings, patchSettings, type NsXSettings } from "~utils/settings";
+import { getAnnotationById, getAnnotationsByUrl, NSX_ANNOTATIONS_KEY, updateAnnotationById } from "~utils/storage";
+
+
+
+
 
 type PageInfo = {
   title: string
   url: string
+  faviconUrl?: string
 }
 
 const getCurrentPageInfo = async (): Promise<PageInfo> => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   return {
     title: tab?.title ?? "",
-    url: tab?.url ?? ""
+    url: tab?.url ?? "",
+    faviconUrl: tab?.favIconUrl ?? undefined
   }
 }
 
 const shortUrl = (url: string) => {
   try {
     const u = new URL(url)
-    return `${u.hostname}${u.pathname}`
+    return u.hostname
   } catch {
     return url
   }
@@ -57,8 +57,14 @@ export default function SidePanel() {
   const [settings, setSettings] = useState<NsXSettings | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [pageCollapsed, setPageCollapsed] = useState(false)
+  const successTimerRef = useRef<number | null>(null)
 
   const pendingText = pending?.selectedText ?? ""
+  const domain = useMemo(
+    () => (pageInfo.url ? shortUrl(pageInfo.url) : ""),
+    [pageInfo.url]
+  )
 
   const refresh = useCallback(async () => {
     setIsRefreshing(true)
@@ -76,14 +82,17 @@ export default function SidePanel() {
       const annotations = await getAnnotationsByUrl(info.url)
       const nextItems: AnnotationPreview[] = annotations.map((a) => ({
         id: a.id,
-        excerpt: (() => {
-          const t = (a.selectedText ?? "").trim()
-          return t.length > 40 ? `${t.slice(0, 40)}…` : t
-        })(),
+        selectedText: a.selectedText ?? "",
+        note: a.note,
         createdAt: a.createdAt,
+        pageTitle: a.pageTitle,
         task:
           a.task?.status === "created"
-            ? { kind: "created", taskId: a.task.taskId }
+            ? {
+                kind: "created",
+                taskId: a.task.taskId,
+                qtableUrl: a.task.qtableUrl
+              }
             : { kind: "not_created" }
       }))
       setItems(nextItems)
@@ -99,11 +108,29 @@ export default function SidePanel() {
   }, [refresh])
 
   useEffect(() => {
+    if (!success) return
+    if (successTimerRef.current != null) {
+      window.clearTimeout(successTimerRef.current)
+      successTimerRef.current = null
+    }
+    successTimerRef.current = window.setTimeout(() => {
+      setSuccess(null)
+      successTimerRef.current = null
+    }, 3000)
+    return () => {
+      if (successTimerRef.current != null) {
+        window.clearTimeout(successTimerRef.current)
+        successTimerRef.current = null
+      }
+    }
+  }, [success])
+
+  useEffect(() => {
     const listener = (message: BackgroundBroadcastMessage) => {
       if (message?.type === CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION) {
         setPending(message.payload)
         if (settings?.loggedIn !== false) setTaskDialogOpen(true)
-        else setSuccess("未登录：请先登录 NoteScriptX 账号")
+        else setActiveTab("settings")
         return
       }
 
@@ -119,54 +146,93 @@ export default function SidePanel() {
   }, [pageInfo.url, refresh, settings?.loggedIn])
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 pb-14 text-slate-900">
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex items-start justify-between gap-3 p-3">
-          <div className="min-w-0">
-            <div className="text-xs font-medium text-slate-500">当前网页</div>
-            <div className="truncate text-sm font-semibold">
-              {pageInfo.title || "（未获取到标题）"}
+        <div className="flex items-center justify-between gap-3 p-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded bg-indigo-600 text-white">
+              ✂︎
             </div>
-            <div className="truncate text-xs text-slate-500">
-              {pageInfo.url ? shortUrl(pageInfo.url) : "（未获取到 URL）"}
-            </div>
+            <div className="text-sm font-semibold">Clipper</div>
           </div>
-          <button
-            className="shrink-0 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
-            disabled={isRefreshing}
-            onClick={refresh}
-            type="button">
-            {isRefreshing ? "刷新中…" : "刷新"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60"
+              disabled={isRefreshing}
+              onClick={refresh}
+              type="button">
+              {isRefreshing ? "刷新中…" : "刷新"}
+            </button>
+            <button
+              className="rounded border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+              onClick={() =>
+                setActiveTab((t) =>
+                  t === "settings" ? "annotations" : "settings"
+                )
+              }
+              type="button">
+              <svg
+                aria-hidden
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24">
+                <path
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.591 1.066c1.543-.978 3.313.792 2.335 2.335a1.724 1.724 0 0 0 1.066 2.591c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.591c.978 1.543-.792 3.313-2.335 2.335a1.724 1.724 0 0 0-2.591 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.591-1.066c-1.543.978-3.313-.792-2.335-2.335a1.724 1.724 0 0 0-1.066-2.591c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.591c-.978-1.543.792-3.313 2.335-2.335a1.724 1.724 0 0 0 2.591-1.066Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1 px-3 pb-2">
-          <button
-            className={`rounded px-2 py-1 text-xs ${
-              activeTab === "annotations"
-                ? "bg-slate-900 text-white"
-                : "text-slate-700 hover:bg-slate-100"
-            }`}
-            onClick={() => setActiveTab("annotations")}
-            type="button">
-            批注
-          </button>
-          <button
-            className={`rounded px-2 py-1 text-xs ${
-              activeTab === "settings"
-                ? "bg-slate-900 text-white"
-                : "text-slate-700 hover:bg-slate-100"
-            }`}
-            onClick={() => setActiveTab("settings")}
-            type="button">
-            设置
-          </button>
-          <div className="flex-1" />
-          {settings ? (
-            <span className="text-xs text-slate-500">
-              {settings.loggedIn ? "已登录" : "未登录"}
-            </span>
+
+        <button
+          className={`w-full border-t border-slate-200 px-3 py-2 text-left ${
+            settings?.loggedIn === false
+              ? "bg-rose-50 text-rose-900"
+              : "bg-white text-slate-900"
+          }`}
+          onClick={() => setPageCollapsed((v) => !v)}
+          type="button">
+          <div className="flex items-center gap-2">
+            {settings?.loggedIn === false ? (
+              <div className="text-sm font-semibold">请登录</div>
+            ) : (
+              <>
+                {pageInfo.faviconUrl ? (
+                  <img
+                    alt=""
+                    className="h-4 w-4 rounded"
+                    src={pageInfo.faviconUrl}
+                  />
+                ) : (
+                  <div className="h-4 w-4 rounded bg-slate-200" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-medium text-slate-500">
+                    {domain || "（未获取到域名）"}
+                  </div>
+                  {!pageCollapsed ? (
+                    <div className="truncate text-sm font-semibold">
+                      {pageInfo.title || "（未获取到标题）"}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
+            <div className="text-slate-400">{pageCollapsed ? "▸" : "▾"}</div>
+          </div>
+          {settings?.loggedIn === false ? (
+            <div className="mt-1 text-xs text-rose-700">
+              登录已过期，Clipper 暂时停止工作
+            </div>
           ) : null}
-        </div>
+        </button>
       </div>
 
       <div className="p-3">
@@ -193,35 +259,6 @@ export default function SidePanel() {
                 onClick={() => setSuccess(null)}
                 type="button">
                 关闭
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {settings && !settings.loggedIn ? (
-          <div className="mb-3 rounded border border-slate-200 bg-white p-3">
-            <div className="text-sm font-semibold text-slate-900">
-              需要登录 NoteScriptX
-            </div>
-            <div className="mt-1 text-sm text-slate-600">
-              当前为未登录状态，无法创建任务。MVP 版本先使用模拟登录。
-            </div>
-            <div className="mt-3 flex items-center justify-end gap-2">
-              <button
-                className="rounded border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                onClick={() => setActiveTab("settings")}
-                type="button">
-                去设置
-              </button>
-              <button
-                className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white hover:bg-slate-800"
-                onClick={async () => {
-                  const next = await patchSettings({ loggedIn: true })
-                  setSettings(next)
-                  setSuccess("已模拟登录")
-                }}
-                type="button">
-                模拟登录
               </button>
             </div>
           </div>
@@ -259,7 +296,23 @@ export default function SidePanel() {
                 加载中…
               </div>
             ) : (
-              <AnnotationList items={items} />
+              <AnnotationList
+                items={items}
+                onCreateTask={(annotationId) => {
+                  const it = items.find((x) => x.id === annotationId)
+                  if (!it) return
+                  setPending({
+                    annotationId,
+                    url: pageInfo.url,
+                    selectedText: it.selectedText
+                  })
+                  if (settings?.loggedIn === false) {
+                    setActiveTab("settings")
+                    return
+                  }
+                  setTaskDialogOpen(true)
+                }}
+              />
             )}
           </>
         ) : (
@@ -296,10 +349,10 @@ export default function SidePanel() {
                     })
                     setSettings(next)
                   }}
-                  value={settings?.defaultTableId ?? "t1"}>
+                  value={settings?.defaultTableId ?? qtables[0]?.id ?? ""}>
                   {qtables.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {(t.emoji ? `${t.emoji} ` : "") + t.name} ({t.row_count})
                     </option>
                   ))}
                 </select>
@@ -325,6 +378,21 @@ export default function SidePanel() {
                 </button>
               </div>
             </div>
+            {settings?.loggedIn === false ? (
+              <div className="mt-3 flex items-center justify-end">
+                <button
+                  className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 active:bg-indigo-700"
+                  onClick={async () => {
+                    const next = await patchSettings({ loggedIn: true })
+                    setSettings(next)
+                    setSuccess("已模拟登录")
+                    setActiveTab("annotations")
+                  }}
+                  type="button">
+                  去登录
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
@@ -341,19 +409,26 @@ export default function SidePanel() {
             const note = ann?.note ?? ""
             const res = await createTaskFromAnnotation({
               annotationId: pending.annotationId,
-              url: pending.url,
-              selectedText: pending.selectedText,
-              note,
-              title: form.title,
-              assignee: form.assignee,
-              dueDate: form.dueDate,
-              tableId: form.tableId
+              task: {
+                title: form.title,
+                assignee_email: form.assignee,
+                due_date: form.dueDate,
+                target_table_id: form.tableId,
+                include_context_url: form.includeContextUrl
+              }
             })
             await updateAnnotationById(pending.annotationId, (a) => ({
               ...a,
-              task: { status: "created", taskId: res.taskId }
+              note: a.note ?? note,
+              task: {
+                status: "created",
+                taskId: res.task_id,
+                qtableUrl: res.qtable_url
+              }
             }))
-            setSuccess(`创建成功（ID:${res.taskId}）`)
+            const tableName =
+              qtables.find((t) => t.id === form.tableId)?.name ?? "目标表格"
+            setSuccess(`任务已派发至 ${tableName}`)
             await refresh()
           }}
           open={taskDialogOpen}
@@ -361,6 +436,35 @@ export default function SidePanel() {
           selectedText={pendingText}
         />
       ) : null}
+
+      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-slate-200 bg-white/95 px-3 py-2 backdrop-blur">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs text-slate-500">
+            当前页批注 {items.length}
+          </div>
+          <button
+            className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-60"
+            onClick={() => {
+              if (settings?.loggedIn === false) {
+                setActiveTab("settings")
+                return
+              }
+              const id =
+                typeof crypto !== "undefined" && "randomUUID" in crypto
+                  ? (crypto as any).randomUUID()
+                  : `blank_${Date.now()}`
+              setPending({
+                annotationId: id,
+                url: pageInfo.url,
+                selectedText: ""
+              })
+              setTaskDialogOpen(true)
+            }}
+            type="button">
+            {settings?.loggedIn === false ? "去登录" : "新建空白任务"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

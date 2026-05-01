@@ -8,7 +8,7 @@ function IndexPopup() {
   return (
     <div className="w-80 space-y-3 p-4 text-sm text-slate-900">
       <h2 className="text-base font-semibold leading-6">
-        Welcome to your <span className="font-bold">Plasmo</span> Extension!
+        欢迎使用 <span className="font-bold">Note Script</span>！
       </h2>
       <input
         className="w-full rounded border border-slate-200 px-2 py-1 outline-none focus:border-slate-400"

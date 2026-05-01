@@ -12,7 +12,7 @@ export const getSettings = async (): Promise<NsXSettings> => {
   const base: NsXSettings = {
     loggedIn: true,
     apiEndpoint: "",
-    defaultTableId: "t1"
+    defaultTableId: "tbl_123456"
   }
   if (!raw || typeof raw !== "object") return base
   const r = raw as Partial<NsXSettings>
@@ -38,4 +38,3 @@ export const patchSettings = async (
   await setSettings(next)
   return next
 }
-

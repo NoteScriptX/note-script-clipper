@@ -3,12 +3,14 @@ export const NSX_ANNOTATIONS_KEY = "nsx_annotations_v1"
 export type NsXAnnotation = {
   id: string
   url: string
+  pageTitle?: string
   createdAt: number
   selectedText: string
   note?: string
   task?: {
     status: "created"
     taskId: string
+    qtableUrl?: string
   }
   anchor: {
     xpath: string

@@ -15,8 +15,8 @@ import {
 } from "~utils/anchor"
 import {
   CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION,
-  STORAGE_UPDATED,
-  sendToBackground
+  sendToBackground,
+  STORAGE_UPDATED
 } from "~utils/messaging"
 import {
   getAnnotationsByUrl,
@@ -58,6 +58,7 @@ type HighlightRect = {
 type DraftAnnotation = {
   id: string
   url: string
+  pageTitle: string
   createdAt: number
   selectedText: string
   anchor: NsXAnnotation["anchor"]
@@ -66,7 +67,13 @@ type DraftAnnotation = {
 
 type CardState =
   | { visible: false }
-  | { visible: true; x: number; y: number; draft: DraftAnnotation }
+  | {
+      visible: true
+      x: number
+      y: number
+      arrowSide: "left" | "right"
+      draft: DraftAnnotation
+    }
 
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v))
@@ -103,36 +110,62 @@ const getSelectionRect = (selection: Selection): DOMRect | null => {
 }
 
 const computeBubblePosition = (rect: DOMRect) => {
-  const bubbleSize = 36
+  const bubbleSize = 28
   const padding = 8
-  const x = clamp(
-    rect.right + padding,
-    padding,
-    window.innerWidth - bubbleSize - padding
-  )
-  const y = clamp(
-    rect.top - bubbleSize - padding,
+  const yMid = clamp(
+    rect.top + rect.height / 2 - bubbleSize / 2,
     padding,
     window.innerHeight - bubbleSize - padding
   )
-  return { x, y }
+
+  const xRight = rect.right + padding
+  if (xRight + bubbleSize + padding <= window.innerWidth) {
+    return { x: xRight, y: yMid }
+  }
+
+  const xLeft = rect.left - padding - bubbleSize
+  if (xLeft >= padding) {
+    return { x: xLeft, y: yMid }
+  }
+
+  const xBelow = clamp(
+    rect.left,
+    padding,
+    window.innerWidth - bubbleSize - padding
+  )
+  const yBelow = clamp(
+    rect.bottom + padding,
+    padding,
+    window.innerHeight - bubbleSize - padding
+  )
+  return { x: xBelow, y: yBelow }
 }
 
-const computeCardPosition = (rect: DOMRect) => {
-  const cardWidth = 320
-  const estimatedHeight = 260
+const computeCardPositionFromBubble = (bubble: {
+  x: number
+  y: number
+}): { x: number; y: number; arrowSide: "left" | "right" } => {
+  const bubbleSize = 28
+  const cardWidth = 300
+  const estimatedHeight = 360
   const padding = 12
-  const x = clamp(
-    rect.right + 12,
-    padding,
-    window.innerWidth - cardWidth - padding
-  )
+  const preferRight = bubble.x + bubbleSize + 8
+  const preferLeft = bubble.x - 8 - cardWidth
+  const canRight = preferRight + cardWidth + padding <= window.innerWidth
+  const canLeft = preferLeft >= padding
+  const x = canRight
+    ? preferRight
+    : canLeft
+      ? preferLeft
+      : clamp(preferRight, padding, window.innerWidth - cardWidth - padding)
+
   const y = clamp(
-    rect.top,
+    bubble.y - 20,
     padding,
     window.innerHeight - estimatedHeight - padding
   )
-  return { x, y }
+
+  return { x, y, arrowSide: canRight ? "left" : canLeft ? "right" : "left" }
 }
 
 const genId = () => {
@@ -147,7 +180,10 @@ export default function Content() {
   const [bubble, setBubble] = useState<BubbleState>({ visible: false })
   const [card, setCard] = useState<CardState>({ visible: false })
   const [highlights, setHighlights] = useState<HighlightRect[]>([])
+  const [ephemeralRects, setEphemeralRects] = useState<DOMRect[]>([])
   const rafRef = useRef<number | null>(null)
+  const ephemeralTimerRef = useRef<number | null>(null)
+  const ephemeralRectsRef = useRef<DOMRect[]>([])
 
   const url = useMemo(() => window.location.href, [])
 
@@ -181,7 +217,7 @@ export default function Content() {
 
   useEffect(() => {
     refreshHighlights()
-  }, [refreshHighlights])
+  }, [card.visible, refreshHighlights])
 
   useEffect(() => {
     const listener = (message: any) => {
@@ -238,6 +274,21 @@ export default function Content() {
       ) {
         return
       }
+      if (ephemeralTimerRef.current != null) {
+        window.clearTimeout(ephemeralTimerRef.current)
+        ephemeralTimerRef.current = null
+      }
+      if (card.visible) {
+        setEphemeralRects(ephemeralRectsRef.current)
+        ephemeralTimerRef.current = window.setTimeout(() => {
+          ephemeralRectsRef.current = []
+          setEphemeralRects([])
+          ephemeralTimerRef.current = null
+        }, 2500)
+      } else {
+        ephemeralRectsRef.current = []
+        setEphemeralRects([])
+      }
       setBubble({ visible: false })
       setCard({ visible: false })
     }
@@ -253,8 +304,12 @@ export default function Content() {
       window.removeEventListener("scroll", onScrollOrResize, true)
       window.removeEventListener("resize", onScrollOrResize, true)
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
+      if (ephemeralTimerRef.current != null) {
+        window.clearTimeout(ephemeralTimerRef.current)
+        ephemeralTimerRef.current = null
+      }
     }
-  }, [refreshHighlights])
+  }, [card.visible, refreshHighlights])
 
   const onBubbleClick = useCallback(async () => {
     const selection = window.getSelection()
@@ -264,11 +319,21 @@ export default function Content() {
     if (!fp) return
 
     setBubble({ visible: false })
-    const rect = getSelectionRect(selection)
-    const pos = rect ? computeCardPosition(rect) : { x: 12, y: 12 }
+    const r = selection.getRangeAt(0)
+    const rects = getMergedClientRects(r)
+    ephemeralRectsRef.current = rects
+    setEphemeralRects(rects)
+    if (ephemeralTimerRef.current != null) {
+      window.clearTimeout(ephemeralTimerRef.current)
+      ephemeralTimerRef.current = null
+    }
+    const pos = bubble.visible
+      ? computeCardPositionFromBubble({ x: bubble.x, y: bubble.y })
+      : { x: 12, y: 12, arrowSide: "left" as const }
     const draft: DraftAnnotation = {
       id: genId(),
       url,
+      pageTitle: document.title || "",
       createdAt: Date.now(),
       selectedText: fp.selectedText,
       anchor: {
@@ -281,8 +346,14 @@ export default function Content() {
     }
 
     selection.removeAllRanges()
-    setCard({ visible: true, x: pos.x, y: pos.y, draft })
-  }, [url])
+    setCard({
+      visible: true,
+      x: pos.x,
+      y: pos.y,
+      arrowSide: pos.arrowSide,
+      draft
+    })
+  }, [bubble, url])
 
   const saveDraft = useCallback(
     async (draft: DraftAnnotation, note: string) => {
@@ -290,6 +361,7 @@ export default function Content() {
         const annotation: NsXAnnotation = {
           id: draft.id,
           url: draft.url,
+          pageTitle: draft.pageTitle,
           createdAt: draft.createdAt,
           selectedText: draft.selectedText,
           note,
@@ -329,6 +401,19 @@ export default function Content() {
             />
           ))
         )}
+        {ephemeralRects.map((r, idx) => (
+          <mark
+            key={`ephemeral_${idx}`}
+            className="pointer-events-none rounded bg-indigo-200/60"
+            style={{
+              position: "fixed",
+              left: r.left,
+              top: r.top,
+              width: r.width,
+              height: r.height
+            }}
+          />
+        ))}
       </div>
 
       {bubble.visible ? (
@@ -359,6 +444,8 @@ export default function Content() {
             const draft = card.draft
             await saveDraft(draft, note)
           }}
+          arrowSide={card.arrowSide}
+          pageTitle={card.draft.pageTitle}
           selectedText={card.draft.selectedText}
           x={card.x}
           y={card.y}

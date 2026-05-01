@@ -12,14 +12,15 @@ type Props = {
   onSubmit: (input: {
     title: string
     assignee: string
-    dueDate: string
+    dueDate?: string
     tableId: string
+    includeContextUrl: boolean
   }) => Promise<void>
 }
 
 const defaultTitleFromText = (text: string) => {
   const t = text.trim().slice(0, 30)
-  return `审查 ‘${t}’`
+  return t ? `审查 ‘${t}’` : "新建任务"
 }
 
 export function TaskForm({
@@ -43,6 +44,7 @@ export function TaskForm({
   const [assignee, setAssignee] = useState("")
   const [dueDate, setDueDate] = useState("")
   const [tableId, setTableId] = useState(defaultTableId)
+  const [includeContextUrl, setIncludeContextUrl] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,14 +54,16 @@ export function TaskForm({
     setAssignee("")
     setDueDate("")
     setTableId(defaultTableId)
+    setIncludeContextUrl(true)
     setError(null)
   }, [open, defaultTableId, defaultTitle])
+
+  const emailLooksOk = assignee.trim().includes("@") && assignee.trim().includes(".")
 
   const canSubmit =
     title.trim().length > 0 &&
     assignee.trim().length > 0 &&
-    assignee.includes("@") &&
-    dueDate.trim().length > 0 &&
+    emailLooksOk &&
     tableId.trim().length > 0
 
   return (
@@ -93,6 +97,9 @@ export function TaskForm({
                 onChange={(e) => setTitle(e.target.value)}
                 value={title}
               />
+              <div className="mt-1 text-xs text-slate-400">
+                这就是 QTable 中的一行
+              </div>
             </div>
 
             <div>
@@ -103,14 +110,14 @@ export function TaskForm({
                 placeholder="name@example.com"
                 value={assignee}
               />
-              {assignee && !assignee.includes("@") ? (
+              {assignee && !emailLooksOk ? (
                 <div className="mt-1 text-xs text-rose-600">
-                  请输入包含 @ 的邮箱
+                  请输入有效邮箱
                 </div>
               ) : null}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-end gap-2">
               <div className="flex-1">
                 <div className="text-xs font-medium text-slate-500">
                   截止日期
@@ -122,6 +129,18 @@ export function TaskForm({
                   value={dueDate}
                 />
               </div>
+              <button
+                className="mb-[1px] rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                onClick={() => {
+                  const d = new Date()
+                  const yyyy = d.getFullYear()
+                  const mm = String(d.getMonth() + 1).padStart(2, "0")
+                  const dd = String(d.getDate()).padStart(2, "0")
+                  setDueDate(`${yyyy}-${mm}-${dd}`)
+                }}
+                type="button">
+                今天
+              </button>
               <div className="flex-1">
                 <div className="text-xs font-medium text-slate-500">
                   目标表格
@@ -132,11 +151,38 @@ export function TaskForm({
                   value={tableId}>
                   {qt.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {(t.emoji ? `${t.emoji} ` : "") + t.name} ({t.row_count})
                     </option>
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
+              <div>
+                <div className="text-xs font-medium text-slate-700">
+                  附上下文链接
+                </div>
+                <div className="text-xs text-slate-500">
+                  在任务详情中带上网页链接与选中文案
+                </div>
+              </div>
+              <button
+                aria-checked={includeContextUrl}
+                className={`relative h-6 w-10 rounded-full border transition-colors ${
+                  includeContextUrl
+                    ? "border-indigo-500 bg-indigo-600"
+                    : "border-slate-300 bg-white"
+                }`}
+                onClick={() => setIncludeContextUrl((v) => !v)}
+                role="switch"
+                type="button">
+                <span
+                  className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow transition-transform ${
+                    includeContextUrl ? "translate-x-5" : "translate-x-1"
+                  }`}
+                />
+              </button>
             </div>
           </div>
 
@@ -160,7 +206,13 @@ export function TaskForm({
                 setSubmitting(true)
                 setError(null)
                 try {
-                  await onSubmit({ title, assignee, dueDate, tableId })
+                  await onSubmit({
+                    title,
+                    assignee,
+                    dueDate: dueDate.trim() || undefined,
+                    tableId,
+                    includeContextUrl
+                  })
                   onOpenChange(false)
                 } catch {
                   setError("创建失败，请重试")
@@ -169,7 +221,14 @@ export function TaskForm({
                 }
               }}
               type="button">
-              {submitting ? "创建中…" : "创建任务"}
+              {submitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  创建中…
+                </span>
+              ) : (
+                "创建任务"
+              )}
             </button>
           </div>
         </Dialog.Content>
