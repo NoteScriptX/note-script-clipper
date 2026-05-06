@@ -5,8 +5,15 @@ import {
   type ContentToBackgroundMessage
 } from "~utils/messaging"
 import { NSX_ANNOTATIONS_KEY, type NsXAnnotation } from "~utils/storage"
-import { getAuthState, startLoginFlow, logout as authLogout } from "~utils/auth"
+import { getAuthState, startLoginFlow, logout as authLogout, getValidAccessToken } from "~utils/auth"
 import { patchSettings } from "~utils/settings"
+
+// Open side panel when extension icon is clicked
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab.id) {
+    await chrome.sidePanel.open({ tabId: tab.id })
+  }
+})
 
 const diffAnnotationUrls = (
   oldValue: unknown,
@@ -161,4 +168,20 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       // ignore
     }
   })()
+})
+
+// Set up periodic token refresh check (every 30 minutes)
+chrome.alarms.create("tokenRefreshCheck", { periodInMinutes: 30 })
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "tokenRefreshCheck") {
+    ;(async () => {
+      try {
+        // This will automatically refresh if needed
+        await getValidAccessToken()
+      } catch (error) {
+        console.error("Token refresh check failed:", error)
+      }
+    })()
+  }
 })

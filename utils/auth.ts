@@ -6,11 +6,11 @@
 // Configuration - Update these values for your QTable deployment
 const OAUTH_CONFIG = {
   // QTable Web OAuth authorization endpoint
-  AUTHORIZATION_ENDPOINT: "http://localhost:8000/oauth/authorize",
+  AUTHORIZATION_ENDPOINT: "https://retrial-prideful-goofball.ngrok-free.dev/oauth/authorize",
   // QTable Web token endpoint
-  TOKEN_ENDPOINT: "http://localhost:8000/oauth/token",
+  TOKEN_ENDPOINT: "https://retrial-prideful-goofball.ngrok-free.dev/oauth/token",
   // User info endpoint (optional)
-  USER_INFO_ENDPOINT: "http://localhost:8000/api/user/me",
+  USER_INFO_ENDPOINT: "https://retrial-prideful-goofball.ngrok-free.dev/api/user/me",
   // OAuth client ID registered in QTable
   CLIENT_ID: "note-script-clipper",
   // Requested scopes

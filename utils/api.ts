@@ -12,7 +12,8 @@ export type QTable = {
  */
 async function authenticatedFetch(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retryCount = 0
 ): Promise<Response> {
   const token = await getValidAccessToken()
   
@@ -26,10 +27,26 @@ async function authenticatedFetch(
     "Content-Type": "application/json"
   }
 
-  return await fetch(url, {
+  const response = await fetch(url, {
     ...options,
     headers
   })
+
+  // Handle 401 - token might be expired
+  if (response.status === 401 && retryCount === 0) {
+    // Force token refresh by clearing cached state
+    const newToken = await getValidAccessToken()
+    if (newToken && newToken !== token) {
+      // Retry with new token
+      headers.Authorization = `Bearer ${newToken}`
+      return await fetch(url, {
+        ...options,
+        headers
+      })
+    }
+  }
+
+  return response
 }
 
 export const getQtables = async (): Promise<QTable[]> => {

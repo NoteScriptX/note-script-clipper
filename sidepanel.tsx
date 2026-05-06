@@ -15,6 +15,7 @@ import { createTaskFromAnnotation, getQtables, type QTable } from "~utils/api";
 import { CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION, STORAGE_UPDATED, type BackgroundBroadcastMessage, type OpenSidePanelPayload } from "~utils/messaging";
 import { getSettings, patchSettings, type NsXSettings } from "~utils/settings";
 import { getAnnotationById, getAnnotationsByUrl, NSX_ANNOTATIONS_KEY, updateAnnotationById } from "~utils/storage";
+import { getAuthState } from "~utils/auth";
 
 
 
@@ -71,6 +72,9 @@ export default function SidePanel() {
     setIsRefreshing(true)
     setError(null)
     try {
+      // Check auth state first
+      const authState = await getAuthState()
+      
       const info = await getCurrentPageInfo()
       setPageInfo(info)
 
@@ -97,8 +101,14 @@ export default function SidePanel() {
             : { kind: "not_created" }
       }))
       setItems(nextItems)
-    } catch {
-      setError("加载失败，请重试")
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("Not authenticated")) {
+        setError("登录已过期，请重新登录")
+        await patchSettings({ loggedIn: false })
+        setSettings(await getSettings())
+      } else {
+        setError("加载失败，请重试")
+      }
     } finally {
       setIsRefreshing(false)
     }
@@ -114,10 +124,20 @@ export default function SidePanel() {
       if (message?.type === "AUTH_STATE_CHANGED") {
         // Refresh settings to get updated user info
         refresh()
+        setIsLoggingIn(false)
+        setSuccess("登录成功")
       }
       if (message?.type === "AUTH_ERROR") {
-        setError(message.error || "登录失败")
+        const errorMsg = message.error || "登录失败"
+        setError(errorMsg)
         setIsLoggingIn(false)
+        
+        // Provide specific guidance for common errors
+        if (errorMsg.includes("user_cancelled")) {
+          setError("您取消了登录")
+        } else if (errorMsg.includes("redirect_uri_mismatch")) {
+          setError("OAuth配置错误，请联系管理员")
+        }
       }
     }
     chrome.runtime.onMessage.addListener(handleAuthMessage)
@@ -405,6 +425,7 @@ export default function SidePanel() {
                   <button
                     className="rounded border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                     onClick={async () => {
+                      if (!confirm("确定要退出登录吗？")) return
                       try {
                         await chrome.runtime.sendMessage({ type: "OAUTH_LOGOUT" })
                         await patchSettings({
