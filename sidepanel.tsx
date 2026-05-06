@@ -58,6 +58,7 @@ export default function SidePanel() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [pageCollapsed, setPageCollapsed] = useState(false)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
   const successTimerRef = useRef<number | null>(null)
 
   const pendingText = pending?.selectedText ?? ""
@@ -105,6 +106,22 @@ export default function SidePanel() {
 
   useEffect(() => {
     refresh()
+  }, [refresh])
+
+  // Listen for auth state changes from background script
+  useEffect(() => {
+    const handleAuthMessage = (message: any) => {
+      if (message?.type === "AUTH_STATE_CHANGED") {
+        // Refresh settings to get updated user info
+        refresh()
+      }
+      if (message?.type === "AUTH_ERROR") {
+        setError(message.error || "登录失败")
+        setIsLoggingIn(false)
+      }
+    }
+    chrome.runtime.onMessage.addListener(handleAuthMessage)
+    return () => chrome.runtime.onMessage.removeListener(handleAuthMessage)
   }, [refresh])
 
   useEffect(() => {
@@ -362,34 +379,88 @@ export default function SidePanel() {
                   <div className="text-xs font-medium text-slate-500">
                     登录状态
                   </div>
-                  <div className="text-xs text-slate-500">仅用于 MVP 模拟</div>
+                  {settings?.userName ? (
+                    <div className="mt-1 flex items-center gap-2">
+                      {settings.userAvatar ? (
+                        <img
+                          src={settings.userAvatar}
+                          alt=""
+                          className="h-6 w-6 rounded-full"
+                        />
+                      ) : null}
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">
+                          {settings.userName}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {settings.userEmail}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500">未登录</div>
+                  )}
                 </div>
-                <button
-                  className="rounded border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                  onClick={async () => {
-                    const next = await patchSettings({
-                      loggedIn: !(settings?.loggedIn ?? true)
-                    })
-                    setSettings(next)
-                    setSuccess(next.loggedIn ? "已模拟登录" : "已切换为未登录")
-                  }}
-                  type="button">
-                  {settings?.loggedIn ? "切换为未登录" : "切换为已登录"}
-                </button>
+                {settings?.loggedIn ? (
+                  <button
+                    className="rounded border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={async () => {
+                      try {
+                        await chrome.runtime.sendMessage({ type: "OAUTH_LOGOUT" })
+                        await patchSettings({
+                          loggedIn: false,
+                          userEmail: undefined,
+                          userName: undefined,
+                          userAvatar: undefined
+                        })
+                        setSettings(await getSettings())
+                        setSuccess("已退出登录")
+                      } catch (err) {
+                        setError("退出失败")
+                      }
+                    }}
+                    type="button">
+                    退出登录
+                  </button>
+                ) : (
+                  <button
+                    className="rounded border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                    disabled={isLoggingIn}
+                    onClick={async () => {
+                      try {
+                        setIsLoggingIn(true)
+                        setError(null)
+                        await chrome.runtime.sendMessage({ type: "OAUTH_START_LOGIN" })
+                        // The background script will handle the OAuth flow
+                        // and send AUTH_STATE_CHANGED message when done
+                      } catch (err) {
+                        setError("启动登录失败")
+                        setIsLoggingIn(false)
+                      }
+                    }}
+                    type="button">
+                    {isLoggingIn ? "登录中..." : "去登录"}
+                  </button>
+                )}
               </div>
             </div>
             {settings?.loggedIn === false ? (
               <div className="mt-3 flex items-center justify-end">
                 <button
-                  className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 active:bg-indigo-700"
+                  className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-60"
+                  disabled={isLoggingIn}
                   onClick={async () => {
-                    const next = await patchSettings({ loggedIn: true })
-                    setSettings(next)
-                    setSuccess("已模拟登录")
-                    setActiveTab("annotations")
+                    try {
+                      setIsLoggingIn(true)
+                      setError(null)
+                      await chrome.runtime.sendMessage({ type: "OAUTH_START_LOGIN" })
+                    } catch (err) {
+                      setError("启动登录失败")
+                      setIsLoggingIn(false)
+                    }
                   }}
                   type="button">
-                  去登录
+                  {isLoggingIn ? "登录中..." : "去登录"}
                 </button>
               </div>
             ) : null}

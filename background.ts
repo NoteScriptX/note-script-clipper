@@ -5,6 +5,8 @@ import {
   type ContentToBackgroundMessage
 } from "~utils/messaging"
 import { NSX_ANNOTATIONS_KEY, type NsXAnnotation } from "~utils/storage"
+import { getAuthState, startLoginFlow, logout as authLogout } from "~utils/auth"
+import { patchSettings } from "~utils/settings"
 
 const diffAnnotationUrls = (
   oldValue: unknown,
@@ -40,11 +42,86 @@ const diffAnnotationUrls = (
   return { urls: Array.from(urls), ids: Array.from(ids) }
 }
 
-chrome.runtime.onMessage.addListener(
-  (message: ContentToBackgroundMessage, sender) => {
-    if (!message || typeof message !== "object") return
-    if (message.type !== CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION) return
+// OAuth message types
+const OAUTH_START_LOGIN = "OAUTH_START_LOGIN" as const
+const OAUTH_LOGOUT = "OAUTH_LOGOUT" as const
+const OAUTH_GET_STATE = "OAUTH_GET_STATE" as const
 
+type OAuthMessage =
+  | { type: typeof OAUTH_START_LOGIN }
+  | { type: typeof OAUTH_LOGOUT }
+  | { type: typeof OAUTH_GET_STATE }
+
+chrome.runtime.onMessage.addListener(
+  (message: ContentToBackgroundMessage | OAuthMessage, sender) => {
+    if (!message || typeof message !== "object") return
+
+    // Handle OAuth messages
+    if (message.type === OAUTH_START_LOGIN) {
+      ;(async () => {
+        try {
+          await startLoginFlow()
+          // After successful login, update settings with user info
+          const authState = await getAuthState()
+          if (authState.isAuthenticated && authState.user) {
+            await patchSettings({
+              loggedIn: true,
+              userEmail: authState.user.email,
+              userName: authState.user.name,
+              userAvatar: authState.user.avatar_url
+            })
+          }
+          // Notify sidepanel to refresh
+          chrome.runtime.sendMessage({ type: "AUTH_STATE_CHANGED" })
+        } catch (error) {
+          console.error("OAuth login failed:", error)
+          chrome.runtime.sendMessage({
+            type: "AUTH_ERROR",
+            error: error instanceof Error ? error.message : "Login failed"
+          })
+        }
+      })()
+      return
+    }
+
+    if (message.type === OAUTH_LOGOUT) {
+      ;(async () => {
+        try {
+          await authLogout()
+          await patchSettings({
+            loggedIn: false,
+            userEmail: undefined,
+            userName: undefined,
+            userAvatar: undefined
+          })
+          chrome.runtime.sendMessage({ type: "AUTH_STATE_CHANGED" })
+        } catch (error) {
+          console.error("Logout failed:", error)
+        }
+      })()
+      return
+    }
+
+    if (message.type === OAUTH_GET_STATE) {
+      ;(async () => {
+        try {
+          const state = await getAuthState()
+          sender.tab &&
+            chrome.tabs.sendMessage(sender.tab.id!, {
+              type: "AUTH_STATE_RESPONSE",
+              state
+            })
+        } catch (error) {
+          console.error("Failed to get auth state:", error)
+        }
+      })()
+      return
+    }
+
+    // Handle existing content messages
+    if ((message as ContentToBackgroundMessage).type !== CONTENT_OPEN_SIDEPANEL_WITH_ANNOTATION) return
+
+    const typedMessage = message as ContentToBackgroundMessage
     const tabId = sender.tab?.id
     if (typeof tabId !== "number") return
     ;(async () => {
@@ -55,7 +132,7 @@ chrome.runtime.onMessage.addListener(
       }
 
       try {
-        await chrome.runtime.sendMessage(message)
+        await chrome.runtime.sendMessage(typedMessage)
       } catch {
         // ignore
       }

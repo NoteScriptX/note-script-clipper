@@ -1,8 +1,8 @@
 {
   "name": "note-script-clipper",
-  "displayName": "NoteScriptX Clipper",
+  "displayName": "NoteScript Clipper",
   "version": "0.0.1",
-  "description": "NoteScriptX browser clipper (MVP).",
+  "description": "NoteScript browser clipper (MVP).",
   "author": "Evan Zhao",
   "scripts": {
     "dev": "plasmo dev",
@@ -32,7 +32,8 @@
       "storage",
       "activeTab",
       "tabs",
-      "sidePanel"
+      "sidePanel",
+      "identity"
     ],
     "host_permissions": [
       "<all_urls>"

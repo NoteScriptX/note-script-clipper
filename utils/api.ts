@@ -1,3 +1,5 @@
+import { getValidAccessToken } from "./auth"
+
 export type QTable = {
   id: string
   name: string
@@ -5,12 +7,44 @@ export type QTable = {
   row_count: number
 }
 
+/**
+ * Helper function to make authenticated API requests
+ */
+async function authenticatedFetch(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const token = await getValidAccessToken()
+  
+  if (!token) {
+    throw new Error("Not authenticated. Please log in.")
+  }
+
+  const headers = {
+    ...options.headers,
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json"
+  }
+
+  return await fetch(url, {
+    ...options,
+    headers
+  })
+}
+
 export const getQtables = async (): Promise<QTable[]> => {
+  // TODO: Replace with actual API call when QTable backend is ready
+  // For now, keep the mock implementation
   const tables: QTable[] = [
     { id: "tbl_123456", name: "我的待办", emoji: "📋", row_count: 12 },
     { id: "tbl_7890", name: "内容审核队列", emoji: "🔍", row_count: 3 }
   ]
   return await delay(tables, 180)
+  
+  // Uncomment when API is ready:
+  // const response = await authenticatedFetch('https://qtable.example.com/api/tables')
+  // if (!response.ok) throw new Error('Failed to fetch tables')
+  // return await response.json()
 }
 
 export type ApiError = {
@@ -77,6 +111,7 @@ const isValidDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s)
 export const createTaskFromAnnotation = async (
   input: CreateTaskFromAnnotationInput
 ): Promise<CreateTaskFromAnnotationResponse> => {
+  // Validation (keep existing validation logic)
   const title = input.task.title.trim()
   if (title.length < 1 || title.length > 200) {
     throw {
@@ -118,6 +153,8 @@ export const createTaskFromAnnotation = async (
 
   const includeContextUrl = input.task.include_context_url !== false
 
+  // TODO: Replace with actual API call when QTable backend is ready
+  // For now, keep the mock implementation
   const tasks = readTasks()
   const taskId = genTaskId(tasks)
   const qtableUrl = `https://qtable.notexcriptx.com/table/${encodeURIComponent(
@@ -147,6 +184,20 @@ export const createTaskFromAnnotation = async (
     },
     420
   )
+  
+  // Uncomment when API is ready:
+  // const response = await authenticatedFetch(
+  //   'https://qtable.example.com/api/annotations/' + input.annotationId + '/tasks',
+  //   {
+  //     method: 'POST',
+  //     body: JSON.stringify(input.task)
+  //   }
+  // )
+  // if (!response.ok) {
+  //   const errorData = await response.json()
+  //   throw errorData
+  // }
+  // return await response.json()
 }
 
 export type UserMe = {
@@ -157,6 +208,8 @@ export type UserMe = {
 }
 
 export const getUserMe = async (): Promise<UserMe> => {
+  // TODO: Replace with actual API call using authenticatedFetch
+  // For now, keep the mock implementation
   return await delay(
     {
       id: "usr_42",
@@ -166,6 +219,11 @@ export const getUserMe = async (): Promise<UserMe> => {
     },
     120
   )
+  
+  // Uncomment when API is ready:
+  // const response = await authenticatedFetch('https://qtable.example.com/api/user/me')
+  // if (!response.ok) throw new Error('Failed to fetch user info')
+  // return await response.json()
 }
 
 export type AnnotationTaskDTO = {
