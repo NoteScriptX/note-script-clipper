@@ -14,7 +14,7 @@ export const getSettings = async (): Promise<NsXSettings> => {
   const raw = res?.[NSX_SETTINGS_KEY]
   const base: NsXSettings = {
     loggedIn: false,
-    apiEndpoint: "",
+    apiEndpoint: "http://localhost:8000",
     defaultTableId: "tbl_123456",
     userEmail: undefined,
     userName: undefined,
